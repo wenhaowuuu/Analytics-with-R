@@ -1,0 +1,78 @@
+---
+title: "R basics"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    collapsed: false
+    number_sections: false
+    toc_depth: 1
+    #code_folding: hide
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message=FALSE,warning=FALSE, cache=TRUE)
+```
+
+# Problem 1
+
+Do simple math with numbers, addition, subtraction, multiplication, division
+
+```{r}
+1+2
+2*5
+5/3
+(1+6+4)/5
+
+```
+
+# Problem 2
+
+Put numbers into variables, do simple math on the variables
+
+```{r}
+a<-1
+b<-2
+a+b
+
+d<-c(1,2,3)
+e<-c(5,6,7)
+d+e
+d*e
+d/e
+
+```
+
+# Problem 3
+
+Write code that will place the numbers 1 to 100 separately into a variable using for loop. Then, again using the seq function.
+
+```{r}
+# for loop solution
+# i becomes the number 1 to 100 at each step of the loop
+
+
+a <- length(100) # make empty variable, set length to 100
+for (i in 1:100){
+  a[i] <-i #assigns the number in i, to the ith index of a
+}
+
+print(a)
+
+# for loop solution #2
+
+a<-c() #create empty variable using combine command
+for (i in 1:100){
+  a<-c(a,i) # keeps combining a with itself and the new number in i
+}
+print(a)
+
+# seq solution
+a <- seq(1,100,1) # look up help for seq using ?seq() in console
+print(a)
+
+```
+
+# Replace this with problem 4
+
+And keep going. Try to solve the problems with different scripts that provide the same solution. Good luck, Happy coding.

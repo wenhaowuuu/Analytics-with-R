@@ -1,11 +1,13 @@
-name: "MyLabJournal"
+name: "Matt Learns R"
 navbar:
-  title: "MyLabJournal"
+  title: "Matt Learns R"
   left:
     - text: "Home"
       href: index.html
-    - text: "Journal"
-      href: Journal.html
+    - text: "R Basics"
+      href: RBasics.html
+    - text: "R functions"
+      href: RFunctions.html
     - text: "Links"
       href: Links.html
 output_dir: "docs"
