@@ -1,0 +1,491 @@
+---
+title: "ISYE6501_HW2"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## ISYE 6501 HW2
+
+## Question 3.1
+
+_Using the same data set (credit_card_data.txt or credit_card_data-headers.txt) as in Question 2.2, use the ksvm or kknn function to find a good classifier:_
+_(a)	using cross-validation (do this for the k-nearest-neighbors model; SVM is optional); and_
+_(b)	splitting the data into training, validation, and test data sets (pick either KNN or SVM; the other is optional)._
+
+```{r}
+#use set seed to make the analysis reproducible
+set.seed(1)
+
+data <- read.delim("credit_card_data-headers.txt")
+head(data)
+
+```
+### 3.1.1 Use K-Nearest-Neighbor Model
+As mentioned in the lectures, usually the full dataset would be split into training, validation and testing sets. Training set is used for building the model, validation set is used for choosing the best model, and testing set is used for evaluating the overall model fit results. However, note here in the case of k-nearest-neighbors model, cross validation is performing model training and validation together, so no need to set aside an individual validation set. Just a training & validation set and a testing set would suffice.
+```{r}
+#First, chose to use the k-nearest-neighbors model here
+#set aside 20% as the test data, and 80% for the training and validation set (combined)
+#Use random sampling method to get the subsets
+#nrow(data)
+Sample1<- sample(1:654, 131)
+training <- data[-Sample1, ]
+testing <- data[Sample1, ]
+
+#Sample2<- sample(1:262, 131)
+#validation <- data[Sample1, ][-Sample2, ]
+#testing <- data[Sample1, ][Sample2, ]
+
+#confirming on the data splitting
+nrow(training)
+nrow(testing)
+```
+Then build the kknn models using the training data set. Note here that similar to HW1, we need to decide on a good k value, and we are going to use cross validation on models with different k values to decide on the best model (each model with a different K).  This time, however, we are just using the training data set to do this, instead of the full data set. Also, for simplicity, let's split the training set into 10 random parts (a rule of thumb good value for the number of folds) and implement cross validation on them. 
+```{r}
+library(kknn)
+
+#First, to ensure randomization, shuffle the data
+training <- training[sample(nrow(training)),]
+
+#Secondly, create labels for 10 random folds out of the shuffled data
+folds <- cut(seq(1,nrow(training)), breaks=10, labels=FALSE)
+
+#test on one example first, to comment out in the submission version
+# val_label0 <- which(folds == 1, arr.ind = TRUE)
+# val_fold0 <- training[val_label0, ]
+# train_folds0 <- training[-val_label0, ]
+# model_kknn_0 <- kknn(R1~., train_folds0, val_fold0, k = 12, distance = 2,kernel = "optimal",scale = TRUE) 
+# predict.kknn0 <- predict(model_kknn_0)
+# predict.kknn0
+# fit0 <- as.integer(predict.kknn0 + 0.5)
+# table(fit0, val_fold0[,11])
+# accuracy0 <- sum(fit0 == val_fold0[,11])/nrow(val_fold0)
+# accuracy0
+
+#develop a mean accuracy function to report back the average accuracy rate of a kknn model with a given K value using 10-fold cross validation
+mean_accuracy <- function(X){
+  model_kknn <- vector(10, mode = "list")
+  fit <- vector(10, mode = "list")
+  accuracy <- vector(10, mode = "list")
+  for (i in 1:10){
+    val_labels <- which(folds == i, arr.ind = TRUE)
+    val_fold <- training[val_labels, ]
+    train_folds <- training[-val_labels, ]
+    model_kknn[[i]] <- kknn(R1~., train_folds, val_fold, k = X, distance = 2,kernel = "optimal",scale = TRUE)  
+    #use as.integer function on the fitted value + 0.5, assuming that if the model predicts at 0.5, it will be classified as 1.
+    fit[[i]]<- as.integer(predict(model_kknn[[i]]) +0.5)
+    accuracy[[i]] <- sum(fit[[i]] == val_fold[,11])/nrow(val_fold)
+  }
+  
+  #return the average accuracy rate of the 10 folds model fits
+  avg_accuracy <- mean(unlist(accuracy))
+  return(avg_accuracy)
+}
+
+#test with K=10  
+mean_accuracy(10)
+
+```
+Now, loop through a range of K values to calculate their corresponding models' accuracy.
+```{r}
+k_val <- c(1:100)
+accuracy_set <- vector(100, mode = "list")
+
+for (k in 1:100){
+  accuracy_set[[k]] <- mean_accuracy(k)
+}
+
+```
+Plot the different k values against the model fits average accuracies
+```{r}
+plot(k_val, accuracy_set)
+lines(k_val, accuracy_set, lwd=1.5)
+```
+Find the optimal K with the highest average accuracy rate
+```{r}
+max(unlist(accuracy_set))
+which.max(unlist(accuracy_set))
+
+```
+Therefore, by using a 10-fold cross validation method on the training and validation set, the optimal k value is 17, and the highest average accuracy rate is 85.85%.
+Now, let's evaluate this chosen model (k = 17) on the full training and validation set and the initially set aside test set. Note that unlike ksvm, the kknn function doesn't report back a formula with coefficients that one can feed new data to. It just reports back the prediction from the test data it receives.
+```{r}
+model_kknn_test <- kknn(R1~., training, testing, k = 17, distance = 2, kernel = "optimal",scale = TRUE)
+
+accuracy_test <- sum(as.integer(predict(model_kknn_test) + 0.5) == testing[,11])/nrow(testing)
+accuracy_test
+```
+Therefore, the chosen model with a K of 17 has an average accuracy rate of 83.2%.
+
+### 3.1.2 Use Support Vector Machines
+Also, try using the ksvm function.
+```{r}
+#First split the data into 60% training, 20% validation and 20% testing sets
+Sample2 <- sample(1:654, 131)
+test_svm <- data[Sample2, ]
+train_val <- data[-Sample2, ]
+
+Sample3 <- sample(1:523, 131)
+val_svm <- train_val[Sample3, ]
+train_svm <- train_val[-Sample3, ]
+
+#verify the split
+nrow(train_svm)
+nrow(val_svm)
+nrow(test_svm)
+
+```
+Create a function that tests the accuracy rate of a model with C value = x. From last exercise, we learned that kernel rbfdot can produce the highest accuracy rate among all the kernels.
+```{r}
+library(kernlab)
+#A function that checks accuracy of the model with C = x
+check_accuracy <- function(x){
+  #build ksvm model
+  model_svm <- ksvm(as.matrix(train_svm[,1:10]),as.factor(train_svm[,11]),type="C-svc",kernel="rbfdot",C=x,scaled=TRUE)
+  #validate the result
+  return(sum(predict(model_svm, val_svm[,1:10]) == val_svm[,11]) / nrow(val_svm))
+}
+
+#test with C = 100
+check_accuracy(100)
+```
+
+Loop through a range of different C values to test their accuracy rates.
+```{r}
+C_val <- c(0.001, 0.01, 0.1, 1,10,100,1000,10000,100000,1000000,10000000,100000000,1000000000,10000000000)
+accuracy <- vector(length(C_val), mode = "list")
+
+for (i in seq_along(C_val)){
+  accuracy[[i]] <- check_accuracy(C_val[[i]])
+} 
+
+```
+Plot out the varying accuracy rates with the changing C values.
+```{r}
+plot(log10(C_val), accuracy)
+lines(log10(C_val), accuracy, lwd=1.5)
+```
+```{r}
+#identify the max accuracy rate achieved
+max(unlist(accuracy))
+C_val[[which.max(unlist(accuracy))]]
+```
+Therefore, the highest accuracy rate is achieved at 0.8549618 when C = 0.1. Let's retrain the ksvm model with C = 0.1 on the combined training and validation set, and then report back the results on the testing set.
+```{r}
+#nrow(train_val)
+model_svm_1 <- ksvm(as.matrix(train_val[,1:10]),as.factor(train_val[,11]),type="C-svc",kernel="rbfdot",C=0.1,scaled=TRUE)
+
+#obtain the model formula
+# calculate a1...am
+a <- colSums(model_svm_1@xmatrix[[1]] * model_svm_1@coef[[1]])
+a
+length(a)
+#calculate a0
+a0 <- model_svm_1@b
+a0
+
+#print the classifier
+sprintf("y = %s + %s * A1 + %s * A2 + %s * A3 + %s * A8 + %s * A9 + %s * A10 + %s * A11 + %s * A12 + %s * A14 + %s * A15", a0, a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10])
+
+```
+Then let's report this model's accuracy rate using the testing set.
+```{r}
+#nrow(test_svm)
+accuracy_1 <- sum(predict(model_svm_1, test_svm[,1:10]) == test_svm[,11]) / nrow(test_svm)
+accuracy_1
+```
+Therefore, this classifier achieves an accuracy rate of 0.870229 overall.
+
+
+## Final Results
+```{r}
+#print the results
+sprintf("The best kknn model had K = %s. The best ksvm model is when C = %s, and the predicting formula is: y = %s + %s * A1 + %s * A2 + %s * A3 + %s * A8 + %s * A9 + %s * A10 + %s * A11 + %s * A12 + %s * A14 + %s * A15", which.max(unlist(accuracy_set)), C_val[[which.max(unlist(accuracy))]], a0, a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9], a[10])
+
+```
+
+
+
+## Question 4.1
+
+_Describe a situation or problem from your job, everyday life, current events, etc., for which a clustering model would be appropriate. List some (up to 5) predictors that you might use._
+
+As an urban planning consultant, in my day-to-day job, an important urban issue to be studied is residential segregation - the physical separation of residential communities with significantly different socioeconomic status and opportunities, which could mean inequality in opportunities and further, indicates an unsustainable development pattern of the city itself.
+An important task that a clustering model would be useful is to identify different socioeconomic clusters of a city's population using census and other publicly available data, and compare the identified clusters with their locations to see if there is a similar pattern. If there are significant overlaps between the socioeconomic pattern and their spatial pattern, then it is a warning sign for city government and policy makers to work on fostering equity across the city region.
+
+Some of the key predictors can include:
+**Median Household Income** This is a continuous predictor, which generally can vary significantly city from city, and among a city's different parts. For this analysis, census data can be collected on a census tract level, which is small enough to derive potential city wide policy recommendations.
+
+**Highest Level of Education** This can be measured either as a categorical predictor (from primary school, high school, college, graduate school, etc.) or a continuous predictor as the number of years of education received. Census data can be collected on a census tract level as well.
+
+**Percentage of Minority Population** This would be a continuous predictor with values from 0 to 100%, indicating how many minority population live in certain census tracts.
+
+**Number of Full-time Workers per Household** This would be a continuous predictor indicating the general employment condition per household in certain areas of the city. While this predictor may be correlated with the median household income (and other) predictor, it is worthwhile to bring it in as it also reveals the economic opportunities a household can get.
+
+**Percentage of Chronic Disease** This would most likely be a continuous predictor showing the prevalence of some major chronic diseases in certain census tracts. This predictor relects the health condition of the population and is an important aspect of the equity topic.
+
+
+
+
+
+## Question 4.2
+
+_The iris data set iris.txt contains 150 data points, each with four predictor variables and one categorical response. The predictors are the width and length of the sepal and petal of flowers and the response is the type of flower. The data is available from the R library datasets and can be accessed with iris once the library is loaded. It is also available at the UCI Machine Learning Repository (https://archive.ics.uci.edu/ml/datasets/Iris ). The response values are only given to see how well a specific method performed and should not be used to build the model._
+
+_Use the R function kmeans to cluster the points as well as possible. Report the best combination of predictors, your suggested value of k, and how well your best clustering predicts flower type._
+
+
+
+### 4.2.1 Data Inspection
+```{r}
+#load the iris dataset
+data_i_unscaled <- read.table("iris.txt")
+head(data_i_unscaled)
+str(data_i_unscaled)
+nrow(data_i_unscaled)
+#take a look at one of the rows
+data_i_unscaled[1,]
+```
+
+```{r}
+#check how many types of flowers are recorded in the data
+library(dplyr)
+count(data_i_unscaled, Species)
+```
+So there are 50 data points for each of the three types. 
+Now, let's try to get a quick understanding of the relationship among the four different predictors, namely, Sepal Length, Sepal Width, Petal Length and Petal Width.
+
+### 4.2.2 Data Scaling
+Let's take a look at the predictors' ranges.
+```{r}
+range(data_i_unscaled$Sepal.Length)
+range(data_i_unscaled$Sepal.Width)
+range(data_i_unscaled$Petal.Length)
+range(data_i_unscaled$Petal.Width)
+```
+Here we see the four predictors' values are smaller than 10 or a magnitude of 1. However, the fourth predictor Petal Width has much smaller value than the other three, so let's scale the data. In this step, as mentioned in the lectures, we could use scaling or standardization approach, but it will depend on whether we needs the scaled data to stay in a value range that still makes sense. I tested both scaling and standardization to the data, and found that standardization would turn some of the lengths and widths into negative values (which no longer makes sense for lengths and widths) and lead to worse clustering results (larger within-cluster sum of squares). However, scaling (normalization) would improve the clustering results.
+```{r}
+#create a function to scale the column values
+
+normalize <- function(x) {
+    (x - min(x)) / (max(x) - min(x))
+}
+
+#scale the four predictors columns
+data_i <- as.data.frame(lapply(data_i_unscaled[1:4], normalize))
+data_i$Species <- data_i_unscaled$Species
+head(data_i)
+
+#I also tested standardization using this method here: Reference:https://stackoverflow.com/questions/23619188/r-scaling-numeric-values-only-in-a-dataframe-with-mixed-types
+#data_i <- data_i_unscaled %>% mutate_if(is.numeric, scale)
+#this method increased the sum of squares significantly.
+
+```
+### 4.2.3 Finding the Best Predictor(s)
+```{r}
+#plotting pairwise graphs between the predictors
+library(ggplot2)
+library(gridExtra)
+
+p1 <- ggplot(data_i, aes(Sepal.Length, Sepal.Width, color = Species)) + geom_point()
+p2 <- ggplot(data_i, aes(Sepal.Length, Petal.Length, color = Species)) + geom_point()
+p3 <- ggplot(data_i, aes(Sepal.Length, Petal.Width, color = Species)) + geom_point()
+p4 <- ggplot(data_i, aes(Sepal.Width, Petal.Length, color = Species)) + geom_point()
+p5 <- ggplot(data_i, aes(Sepal.Width, Petal.Width, color = Species)) + geom_point()
+p6 <- ggplot(data_i, aes(Petal.Length, Petal.Width, color = Species)) + geom_point()
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 3)
+```
+From the plots above, we can see that certain pairs of predictors have clearer differences across the three species. For example, as shown in the top left plot of Sepal Length and Sepal Width, versicolor and virginica are mingled with each other and hard to separate on the graph, while in the bottom right plot of Petal Length and Petal Width, the three species seem to scatter around three clusters.
+
+The reason behind could be that some pairs of predictors are more significantly correlated to each other than other pairs, therefore, leading to different distribution patterns.
+
+To take a closer look, let's create a correlation matrix across all predictors.
+```{r}
+#load the corrplot library
+library(corrplot)
+#?round
+#?cor
+# Compute a correlation matrix
+corr <- round(cor(data_i[,1:4]), 2)
+corrplot(corr, method = "circle")
+```
+From this corelation matrix above, it is clear that Petal Length is highly correlated with Petal Width, meanwhile, Sepal Length and Sepal Width are rather uncorrelated. For two highly correlated predictors, given a same value of one predictor, the two species can have quite different values in the other predictor (think of these as two linear function with different coefficients). Therefore, their plots look like that the species can be separated easily. On the contrary, for a uncorrelated pair of predictors, the two predictors' values act randomly between the two species, so they may end up having similar(or not) values given a same value on one predictor, thus their plots look like that they congest together.
+
+However, note that in supervised learning, when trying to choose a good combination of predictors to predict the species effectively and efficiently, we want to reduce duplicate information, which is present in highly correlated predictors (or multicollinearity in regression).
+
+But for this clustering exercise, let's test k-means clustering models with different numbers and combinations of predictors.
+
+```{r}
+data_i_pred <- data_i[,1:4]
+#Sepal Length, Sepal Width, Petal Length and Petal Width
+cluster_0 <- kmeans(data_i_pred, centers = 3, nstart = 10)
+
+#compare with original unscaled data
+cluster_unscaled <- kmeans(data_i_unscaled[,1:4], centers = 3, nstart = 10)
+
+#report back the total within-cluster sum of squares
+cluster_0$tot.withinss
+cluster_unscaled$tot.withinss
+```
+The normalization indeed improves the clustering results! Let's see if using 3 predictors is better than using all 4 predictors, keeping all other parameters the same.
+```{r}
+tts_three_pred <- rep(0, 4)
+for (i in 1:4){
+  cluster_pred <- kmeans(data_i_pred[, -i], centers = 3, nstart = 10)
+  tts_three_pred[[i]] <- cluster_pred$tot.withinss
+} 
+
+tts_three_pred
+
+```
+Therefore, for 3 predictors combinations, the one with Sepal Length, Petal Length and Petal Width together has the best result. What about 2 predictors combinations? Let's do the same tests.
+```{r}
+tts_two_pred <- rep(0, 6)
+pairs <- combn(c(1:4),2)
+pairs
+```
+
+```{r}
+for (i in 1:6){
+  cluster_pred <- kmeans(data_i_pred[, pairs[,i]], centers = 3, nstart = 10)
+  tts_two_pred[[i]] <- cluster_pred$tot.withinss
+}
+
+tts_two_pred
+
+```
+From above results, we can see that the lowest sum of squares is 1.701875, reached when i = 6, using only Petal Length and Petal Width as the predictors.
+
+Finally, let's test the single predictor models.
+
+```{r}
+tts_one_pred <- rep(0, 4)
+
+for (i in 1:4){
+  cluster_pred <- kmeans(data_i_pred[, i], centers = 3, nstart = 10)
+  tts_one_pred[[i]] <- cluster_pred$tot.withinss
+}
+
+tts_one_pred
+
+```
+Looks like the single predictor models are even better, the min within-cluster sum of squares is achieved when i = 3, using only Petal Length as the single predictor can create the best clustering results.
+
+
+### 4.2.4 Finding the Optimal k
+Now, let's try to find the best optimal k or number of clusters.
+```{r}
+#create vector storing multiple potential k, and reporting back their corresponding total within-cluster sum of squares
+
+cluster_set <- vector(30, mode = "list")
+tss_set <- vector(30, mode = "list")
+
+#create a function that reports back the total within-cluster sum of squares of a k-means model with given number of clusters. Use nstart = 10 as it is neither too large or too small, and for simplicity purpose we'll keep it the same.
+
+check_tss <- function(x){
+  cluster_set[[x]] <- kmeans(data_i_pred[,3], centers = x, nstart = 10)
+  return(cluster_set[[x]]$tot.withinss)
+}
+
+#test on k = 1 and k = 5
+check_tss(1)
+check_tss(5)
+
+```
+
+```{r}
+#loop through k from 1 to 30, and plot the line between k values and sum of squares
+for (k in 1:30){
+  tss_set[[k]] <- check_tss(k)
+}
+
+plot(c(1:30), tss_set, xlim = c(1,31), ylim = c(-2,20), main = "K Values and Total Within-cluster Sum of Squares", xlab = "K values", ylab = "Total Within-cluster Sum of Squares")
+lines(c(1:30), tss_set, lwd=2, col = "blue")
+text(c(1:30), tss_set, labels = round(unlist(tss_set),2), cex= 0.5, font = 2, pos = 1)
+text(c(1:30), tss_set, labels = c(1:30), cex= 0.5, col = "red", font = 2, pos = 3)
+```
+Now obtain the marginal reduction of total within-cluster sum of squares by k val.
+```{r}
+#create a list to store the marginal reduction values
+margin_reduct <- rep(0, 29)
+#run a loop to get the values
+for (i in 1:29) {
+  margin_reduct[[i]] <- unlist(tss_set)[[i]] - tss_set[[i+1]]
+}
+#take a look at the marginal reductions
+margin_reduct
+```
+Plot the marginal reduction by increasing k values.
+```{r}
+#use barplot function to plot
+barplot(margin_reduct,
+main = "K Values and Marginal Reduction of Sum of Squares",
+xlab = "K values",
+ylab = "Marginal Reduction",
+ylim = c(-2,18),
+col = "darkred",
+horiz = FALSE)
+text(c(1:29), margin_reduct, labels = round(margin_reduct,2), col = "red", cex= 0.5, font = 2, pos = 3)
+#add the original sum of squares to the labels
+text(c(1:30), tss_set, labels = round(unlist(tss_set),2), col = "blue", cex= 0.5, font = 2.5, pos = 3, offset = 2)
+```
+Therefore, from the above bar charts, we can see that when k increases from 1 to 2, the total sum of squares dropped 11.4 from 13.34, a 85.4% drop. When k changes from 2 to 3, the drop is 1.24, a 9.2% drop as of the original sum of squares. Then, when k increases to 4, the drop is 0.34, only a 2.6% drop, and only 3.1% of the first drop. Further on, the marginal reduction of sum of squares are even smaller, less than 1% of the first drop.
+
+Let's assume we want the marginal reduction to be larger than 1.33, or 10% of the original total within-cluster sum of squares, to be a worthwhile increase of the k. Thus, the optimal k is 3, when the toal sum of squares is 0.71, 5.3% of the original. This makes sense as well because we are trying to identify clusters of features among the three types of flowers here.
+
+
+### 4.2.5 Evaluate the Chosen Clustering Model
+Next, let's try to evaluate how well this model predicts the flower types.
+
+```{r}
+#Calculate the accuracy of clustering.
+cluster_best <- kmeans(data_i_pred[,3], centers = 3, nstart = 10)
+tss_best <- cluster_best$tot.withinss
+tss_best
+```
+Compare it with the model with Petal Length and Width as predictors:
+```{r}
+#Calculate the accuracy of clustering.
+cluster_best_1 <- kmeans(data_i_pred[,3:4], centers = 3, nstart = 10)
+tss_best_1 <- cluster_best_1$tot.withinss
+tss_best_1
+```
+Actually, later I found if using the scale() function to scale the data, the result would be that Petal Length and Petal Width would be the best combinations of predictors, instead of the single predictor of Petal Length!
+
+```{r}
+data_i_pred
+```
+
+```{r}
+#print the clustering result
+cluster_best
+```
+
+Try to evaluate and visualize the clustering results.
+```{r}
+#create a table showing the clustering result among the original flower types. Note that the model values are reported in the same order as the rows in the original data, so we can use table() function to do this. 
+table(cluster_best$cluster, data_i$Species)
+
+```
+
+
+From this table, let's use the ratio of successfully clustered data points over total number of data points as a measuring tool. Here successfully clustered points within a specific flower type mean those falling in the same cluster as the majority of that specific type.
+
+We can see that a total of 143(50+46+47) data points are clustered into either one of the flower types, and only 7 data points are clustered differently. This success ratio is therefore 95.33%.
+
+```{r}
+#visualize the three clusters
+#append the cluster ID to the original dataset
+data_i_unscaled$cluster <- cluster_best$cluster
+ggplot(data_i_unscaled, aes(Petal.Length, cluster, color = Species)) + geom_point()
+
+```
+Above plot shows three clear clusters with a few exceptions between the versicolor and virginica types. 
+
+## Final Results
+```{r}
+sprintf("Best combination of predictors is using Petal Length as the predictor. Best value of k is 3, which would give a minimum total within-cluster sum of squares of %s, and a success clustering ratio of 0.9533",tss_best)
+```
+

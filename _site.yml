@@ -1,13 +1,15 @@
-name: "Matt Learns R"
+name: "Analytics Projects"
 navbar:
-  title: "Matt Learns R"
+  title: "Analytics Projects"
   left:
     - text: "Home"
       href: index.html
-    - text: "R Basics"
+    - text: "R intro"
       href: RBasics.html
-    - text: "R functions"
+    - text: "Data Wrangling"
       href: RFunctions.html
+    - text: "KNN Classification"
+      href: ISYE6501_HW2.html
     - text: "Links"
       href: Links.html
 output_dir: "docs"
